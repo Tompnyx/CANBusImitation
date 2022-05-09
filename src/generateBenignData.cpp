@@ -47,8 +47,8 @@ void loop() {
     while (CAN_MSGAVAIL == CAN.checkReceive()) {
         receive_can();
     }
-    // send data per 5s
-    delay(10);
+    // send data per 1s
+    delay(1000);
 }
 
 // CREATE MESSAGES ============================================================
@@ -75,11 +75,7 @@ void generate_empty_message(unsigned long &id,
     ext = 0;
     rtrBit = 0;
     len = 8;
-    #if MAX_DATA_SIZE > 8
-        len = CANFD::len2dlc(len);
-    #else
-        len = 8;
-    #endif
+    len = CANFD::len2dlc(len);
 }
 
 void generate_random_id(unsigned long &id, bool isCanFD) {
@@ -110,17 +106,13 @@ void generate_random_payload(byte &len, unsigned char *payload, bool isRTR) {
         payload[i] = random(0x100);
     }
 
-    // Pads the rest of the
+    // Pads the rest of the payload with 0.
     for (i = len; i < MAX_DATA_SIZE; i++) {
         payload[i] = 0;
     }
 
     // Sets the length of the data sent.
-    #if MAX_DATA_SIZE > 8
-        len = CANFD::len2dlc(len);
-    #else
-        len = 8;
-    #endif
+    len = CANFD::len2dlc(len);
 }
 
 void generate_random_message(unsigned long &id,
@@ -218,6 +210,9 @@ void send_can(unsigned long id, unsigned char *payload, byte len) {
     byte ext = 0x01;
     byte rtrBit = 0x02;
 
+    // Sets the length of the data sent.
+    len = CANFD::len2dlc(len);
+
     CAN.sendMsgBuf(id, ext, rtrBit, len, payload);
     SERIAL_PORT_MONITOR.print("Sent Message:\t");
     print_can_message_to_monitor(id, len, payload);
@@ -238,6 +233,262 @@ void receive_can() {
         // Prints the canID to terminal
         print_can_message_to_monitor(canId, len, buf);
     }
+}
+
+// CAR FUNCTIONS ==============================================================
+
+// The following code is heavily inspired by the work done by DaveBlackH on his
+// GitHub repository 'MazdaRX8Arduino'. Accessed 09/05/2022 from
+// https://github.com/DaveBlackH/MazdaRX8Arduino
+
+// Hence, certain features and functions will be loosely based on the Mazda
+// RX8 model.
+
+/**
+ * Steering Angle Sensor
+ *
+ * len = 4
+ * Byte 1: Unknown
+ * Byte 2: Indicator if steering is centered
+ * Byte 3/4: The angle of the steering wheel
+ *
+ * @param angle The angle of the steering wheel(0xFDE1 to 0x021E, 64993 to 542,
+ * left to right respectively). It is 0x0000 if centered.
+  * @param centered If the steering wheel is centered or not.
+ */
+void SAS(unsigned short angle, bool centered) {
+    unsigned char payload[8] = {0};
+    // Generate random first byte
+    payload[0] = random(0xFF);
+    // Determines whether the steering wheel is centered
+    if (centered) {
+        payload[1] = 0xEF;
+    } else {
+        payload[1] = 0x6F;
+        // Checks and sets the angle between the bounds
+        if (angle < 542) {
+            angle = 542;
+        } else if (angle > 64993) {
+            angle = 64993;
+        }
+
+        payload[2] = angle >> 8; // Divide by 256
+        payload[3] = angle & 0xFF; // Modulus by 256
+    }
+
+    send_can(SASID, payload, 4);
+}
+
+/**
+ * Anti-lock Breaking System
+ *
+ * len = 7
+ * Byte 4 bit 3: DSC
+ * Byte 5 bit 4: ABS
+ * Byte 5 bit 7: breakFailure
+ * Byte 6 bit 5: TC off
+ * Byte 6 bit 6: TC on
+ *
+ * @param DSC If the Dynamic Stability Control is active
+ * @param ABS If the Anti-lock Breaking System is active
+ * @param breakFailure If the hand break or breaks have failed
+ * @param TC If the Traction Control is active or not
+ */
+void ABS(bool DSC, bool ABS, bool breakFailure, bool TC) {
+    unsigned char payload[8] = {0};
+
+    if (DSC) {
+        payload[3] = 0b00000100;
+    }
+
+    if (ABS) {
+        payload[4] |= 0b00001000;
+    }
+    if (breakFailure) {
+        payload[4] |= 0b01000000;
+    }
+
+    if (TC) {
+        payload[5] = 0b00100000;
+    } else {
+        payload[5] = 0b00010000;
+    }
+
+    send_can(ABSID, payload, 7);
+}
+
+/**
+ * Electronic Power Steering
+ *
+ * len = 1
+ * Byte 1 bit 8: Determines whether the EPS is on or off (1 for on, 0 for off)
+ *
+ * @param on Determines whether the EPS is on or off
+ */
+void EPS(bool EPSOn) {
+    unsigned char payload[8] = {0};
+
+    if (EPSOn) {
+        payload[0] = 0b10000000;
+    }
+
+    send_can(EPSID, payload, 1);
+}
+
+/**
+ * The four wheel speeds
+ *
+ * len = 8
+ * Each wheel takes up two bytes, with the order being:
+ * Front Left, Front Right, Rear Left, Rear Right.
+ * Two CAN messages are sent from this module, with the second being the speed
+ * of the four wheels plus 10,000
+ *
+ * @param speed how fast the car is travelling (in kms)
+ */
+void WHEEL_SPEEDS(unsigned short speed) {
+    unsigned char payload[8] = {0};
+    unsigned char payload_10k[8] = {0};
+
+    // As the information is stored in the payload as big endian, the following
+    // transformation needs to occur
+    for (int i = 0; i < 8; i = i + 2) {
+        payload[i] = speed >> 8; // Divide by 256
+        payload_10k[i] = (speed + 10000) >> 8;
+        payload[i + 1] = speed & 0xFF; // Modulus by 256
+        payload_10k[i + 1] = (speed + 10000) & 0xFF;
+    }
+
+    send_can(WHEELID, payload, 8);
+    send_can(WHEEL10kID, payload_10k, 8);
+}
+
+/**
+ * The odometer
+ *
+ * len = 1
+ * Byte 1: Changes from 1 to 0 when 1km has been travelled. Used to increment
+ * the odometer
+ *
+ * @param increment To increment the odometer or not
+ */
+void ODOMETER(bool increment) {
+    unsigned char payload[8] = {0};
+    if (increment) {
+        payload[0] = 0b00000001;
+    }
+    send_can(ODOMETER_ID, payload, 1);
+}
+
+/**
+ * Powertrain Control Module
+ *
+ * len = 8
+ * Byte 1/2: The modified value of the RPM sent (Note - the sent RPM is
+ * different - Sent RPM = Actual RPM * 3.85
+ * Byte 3/4: Static and set to 0xFF
+ * Byte 5/6: The modified value of the km per hour speed of the car (Note -
+ * the sent KMPH is different - Sent KMPH = (Actual KMPH * 100) + 10,000)
+ * Byte 7: The pressure applied to the throttle pedal (Note - range
+ * accounts for 0 to 0xC8 in 0.5% increments)
+ * Byte 8: Static and set to 0xFF
+ *
+ * @param RPM The real RPM of the car
+ * @param KMPH The real kilometers per hour of the car
+ * @param throttle The pressure applied to the throttle pedal (Note - range
+ * accounts for 0 to 0xC8 in 0.5% increments)
+ */
+void PCM(double RPM, int KMPH, unsigned short throttle) {
+    unsigned char payload[8] = {0};
+
+    // Convert RPM to the modified value and Big Endian
+    RPM = RPM * 3.85;
+    payload[0] = (short) RPM >> 8;
+    payload[1] = (short) RPM & 0xFF;
+
+    // Static bytes
+    payload[2] = 0xFF;
+    payload[3] = 0xFF;
+
+    // Convert KMPH to the modified value and Big Endian
+    KMPH = (KMPH * 100) + 10000;
+    payload[4] = (short) KMPH >> 8;
+    payload[5] = (short) KMPH * 0xFF;
+
+    // Check throttle lies within bounds
+    if (throttle > 0xC8) {
+        payload[6] = 0xC8;
+    } else {
+        payload[6] = throttle;
+    }
+
+    // Static byte
+    payload[7] = 0xFF;
+
+    send_can(PCMID, payload, 8);
+}
+
+/**
+ * The Powertrain Control Module Instrument Cluster
+ *
+ * len = 7
+ * Byte 1: Contains the engine temperature
+ * Byte 2: Contains the odometer value
+ * Byte 3/4: Unknown, set to 0
+ * Byte 5: If the oil pressure is okay (0 for fault, >=1 for OK)
+ * Byte 6 bit 7: If the engine light is on
+ * Byte 6 bit 8: If the engine light is blinking
+ * Byte 7 bit 2: If the coolant is low
+ * Byte 7 bit 7: If the battery charge is low
+ * Byte 7 bit 8: If the oil pressure light is on
+ *
+ * @param engine_temp What the engine temperature is (Between 128 to 192)
+ * @param odometer_increment If the odometer should be incremented
+ * @param oilPressureOK If the oil pressure is OK
+ * @param engineOn If the engine light is on
+ * @param engineBlinking If the engine light is blinking
+ * @param lowCoolant If the coolant fluid is low
+ * @param batteryCharge If the battery has low charge/ no charge
+ */
+void PCM_IC(short engine_temp, byte odometer_increment, bool oilPressureOK,
+            bool engineOn, bool engineBlinking, bool lowCoolant,
+            bool batteryCharge) {
+    unsigned char payload[8] = {0};
+
+    // Check the range of the engine temperature
+    if (engine_temp < 128) {
+        payload[0] = 128;
+    } else if (engine_temp > 192) {
+        payload[0] = 192;
+    } else {
+        payload[0] = engine_temp;
+    }
+
+    if (odometer_increment) {
+        payload[1] = 0b00000001;
+    }
+
+    if (oilPressureOK) {
+        payload[4] = 1;
+        // Sets the correct bit in byte 7
+        payload[6] |= 0b10000000;
+    }
+
+    // Checks to see if the engine light is on or blinking
+    if (engineBlinking) {
+        payload[5] = 0b10000000;
+    } else if (engineOn) {
+        payload[5] = 0b01000000;
+    }
+
+    if (lowCoolant) {
+        payload[6] |= 0b00000010;
+    }
+    if (batteryCharge) {
+        payload[6] |= 0b01000000;
+    }
+
+    send_can(PCM_ICID, payload, 7);
 }
 
 // END FILE ===================================================================

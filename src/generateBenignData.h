@@ -1,5 +1,5 @@
 //
-// Created by tompn on 11/04/2022.
+// Created by tompnyx on 11/04/2022.
 //
 
 #ifndef CLIONARDUINO_GENERATEBENIGNDATA_H
@@ -7,6 +7,16 @@
 #include <Arduino.h>
 
 // List of ECUs and their priority
+
+// CHASSIS
+#define SASID 0x81
+#define ABSID 0x212
+#define EPSID 0x300
+#define WHEELID 0x4b1
+#define WHEEL10kID 0x4b0
+#define PCMID 0x201
+#define PCM_ICID 0x420
+#define AWDCMID 0x00000FF2
 
 //LIGHTS
 #define HEADLIGHTS 0x0CF0F000
@@ -40,11 +50,6 @@
 #define AIRBAGSYSTEM 0x0000FF00
 #define TCMTRANSMISSION 0x0000FF01
 
-// CHASSIS
-#define STEERINGANGLESENSORMODULE 0x00000FF0
-#define POWERSTEERINGCONTROLMODULE 0x00000FF1
-#define ALLWHEELDRIVECONTROLMODULE 0x00000FF2
-
 // COMFORT
 #define AUDIOSYSTEM 0x0CF00940
 #define VENTILATIONSYSTEM 0x0CF00941
@@ -56,7 +61,8 @@
 #define DIAGNOSTICSYSTEM 0x0000FFFF
 #define TOUCHSCREEN 0x00005FF1
 #define CENTRALBODYCONTROL 0x00000C54
-
+#define CRUISE_CONTROLID 0x650
+#define ODOMETER_ID 0x4c0
 
 
 void generate_empty_message(unsigned long &id,
@@ -78,6 +84,15 @@ void send_can(bool sendRandom);
 void send_can(unsigned long id);
 void send_can(unsigned long id, unsigned char *payload, byte len);
 void receive_can();
+void SAS(unsigned short angle, bool centered);
+void ABS(bool DSC, bool ABS, bool breakFailure, bool TC);
+void EPS(bool EPSOn);
+void WHEEL_SPEEDS(unsigned short speed);
+void ODOMETER(bool increment);
+void PCM(double RPM, int KMPH, unsigned short throttle);
+void PCM_IC(short engine_temp, byte odometer_increment, bool oilPressureOK,
+            bool engineOn, bool engineBlinking, bool lowCoolant,
+            bool batteryCharge);
 
 /* CANFD Auxiliary helper */
 class CANFD {
