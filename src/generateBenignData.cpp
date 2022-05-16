@@ -2,15 +2,13 @@
 // Created by tompnyx on 11/04/2022.
 //
 #include "generateBenignData.h"
-#include <can-serial.h>
 #include <mcp2515_can.h>
-#include <mcp2515_can_dfs.h>
-#include <mcp_can.h>
 #include <SPI.h>
 
 // CONSTANTS ==================================================================
-// Sets the maximum payload size - CANFD can carry data up to 64 bytes
-#define MAX_DATA_SIZE 64
+// Sets the maximum payload size - CANFD can carry data up to 64 bytes, whereas
+// CAN 2.0 can only carry up to 8 bytes
+#define MAX_DATA_SIZE 8
 
 // PUBLIC VARIABLES ===========================================================
 // CAN_2515
@@ -22,13 +20,15 @@ mcp2515_can CAN(SPI_CS_PIN);
 unsigned long timeStart;
 // The CAN ID to filter for (If equal to 0 it will be ignored)
 unsigned long filterId = 0;
+// Whether to send (1), receive (2), or do both (0)
+short operationType = 2;
 
 // ARDUINO FUNCTIONS ==========================================================
 
 void setup() {
     SERIAL_PORT_MONITOR.begin(115200);
     // wait for Serial
-    while (!SERIAL_PORT_MONITOR){}
+    while (!SERIAL_PORT_MONITOR);
     // init can bus at a baudrate = 500k
     if (CAN_OK != CAN.begin(CAN_500KBPS)) {
         SERIAL_PORT_MONITOR.println("CAN init fail");
@@ -42,62 +42,49 @@ void setup() {
 }
 
 void loop() {
-    send_can(true);
-    // Checks to see if there is incoming data
-    while (CAN_MSGAVAIL == CAN.checkReceive()) {
-        receive_can();
+    if (operationType != 1) {
+        // Checks to see if there is incoming data
+        if (CAN_MSGAVAIL == CAN.checkReceive()) {
+            receive_can();
+        }
     }
-    // send data per 1s
-    delay(1000);
+    if (operationType != 1) {
+        // Sends a random CAN message
+        send_can(true);
+    }
 }
 
 // CREATE MESSAGES ============================================================
 
-void generate_empty_message(unsigned long &id,
-                            byte &ext,
-                            byte &rtrBit,
-                            byte &len,
-                            unsigned char *payload) {
-    // send data:  id = 0x00, standard frame, data len = Max data size,
-    // payload: data buf
-    payload[MAX_DATA_SIZE - 1] = payload[MAX_DATA_SIZE - 1] + 1;
-    if (payload[MAX_DATA_SIZE - 1] == 100) {
-        payload[MAX_DATA_SIZE - 1] = 0;
 
-        payload[MAX_DATA_SIZE - 2] = payload[MAX_DATA_SIZE - 2] + 1;
-        if (payload[MAX_DATA_SIZE - 2] == 100) {
-            payload[MAX_DATA_SIZE - 2] = 0;
-
-            payload[MAX_DATA_SIZE - 3] = payload[MAX_DATA_SIZE - 3] + 1;
-        }
-    }
-    id = 0x00;
-    ext = 0;
-    rtrBit = 0;
-    len = 8;
-    len = CANFD::len2dlc(len);
-}
-
-void generate_random_id(unsigned long &id, bool isCanFD) {
-    if (isCanFD) {
-        // A CAN FD ID is now generated - which takes up to 29 bits. As the
-        // Arduino AVR only generates up to 16-bit random numbers, a second
-        // mask is applied to the first to generate a 29 bit random number.
+void generate_random_id(unsigned long &id, bool ext) {
+    if (ext) {
+        // An Extended Frame ID is now generated - which takes up to 29 bits.
+        // As the Arduino AVR only generates up to 16-bit random numbers, a
+        // second mask is applied to the first to generate a 29 bit random
+        // number.
         id = random(0x1U << 14);
         id |= (uint32_t)random(0x1U << 15) << 14;
     } else {
-        // A CAN ID is now generated - which takes up to 11 bits.
+        // A Standard Frame ID is now generated - which takes up to 11 bits.
         id = random(0x1U << 11);
     }
 }
 
-void generate_random_payload(byte &len, unsigned char *payload, bool isRTR) {
-    if (isRTR) {
+void generate_random_payload(byte &len, unsigned char *payload, bool ext,
+                             bool rtr) {
+    if (rtr) {
         // Here an RTR message is sent - so the payload has to be empty.
         len = 0;
     } else {
         // Here a normal message is randomly generated.
-        len = random(0, MAX_DATA_SIZE + 1);
+        // Remember the condition max in the function random is exclusive to
+        // the upper bound.
+#if MAX_DATA_SIZE > 8
+        len = ext ? random(16) : random(9);
+#else
+        len = random(9);
+#endif
     }
 
     // Populate the payload (message buffer) with random values.
@@ -105,41 +92,39 @@ void generate_random_payload(byte &len, unsigned char *payload, bool isRTR) {
     for (i = 0; i < len; i++) {
         payload[i] = random(0x100);
     }
-
-    // Pads the rest of the payload with 0.
-    for (i = len; i < MAX_DATA_SIZE; i++) {
-        payload[i] = 0;
-    }
-
-    // Sets the length of the data sent.
-    len = CANFD::len2dlc(len);
 }
 
 void generate_random_message(unsigned long &id,
                              byte &ext,
-                             byte &rtrBit,
+                             byte &rtr,
                              byte &len,
                              unsigned char *payload) {
-    // bit0: ext, bit1: rtr
-    uint8_t type = random(4);
+    // Here a random number up to 4 is generated. The value of the bit
+    // determines the value of ext and rtr.
+    // ext is true if the zero bit - e.g., 0b0X - is populated.
+    // rtr is true if the first bit - e.g., 0bX0 - is populated.
+    // 3 = 0b11 -> ext = true,  rtr = true
+    // 2 = 0b10 -> ext = false, rtr = true
+    // 1 = 0b01 -> ext = true,  rtr = false
+    // 0 = 0b00 -> ext = false, rtr = false
+    long type = random(4);
 
     // Set values of EXT and RTR bit.
 
     // EXT is the type of frame that is generated. A EXT bit of 1 means the
-    // message sent is a CAN FD message.
-    ext = bool(type & 0x1);
+    // message sent is an extended frame message, whereas a standard frame
+    // would have  a bit of 0
+    ext = type & 0x1;
     // RTR is the Remote Request Frame. It is a feature that sends empty
     // packages requesting data from the target ID. If a CAN FD message is
     // sent (which has a 29 bit identifier), the 11 most significant bits
     // change to the Substitute Remote Request (SRR).
-    rtrBit = bool(type & 0x2);
+    rtr = type & 0x2;
 
     // Generates a random CAN ID
-    // ext is true if the zero bit - e.g., 000X - is populated.
     generate_random_id(id, ext);
     // Generates a random payload and sets length accordingly
-    // rtr is true if the first bit - e.g., 00X0 - is populated
-    generate_random_payload(len, payload, rtrBit);
+    generate_random_payload(len, payload, ext, rtr);
 }
 
 // DISPLAY MESSAGES ===========================================================
@@ -179,41 +164,59 @@ void send_can(bool sendRandom) {
     unsigned char payload[MAX_DATA_SIZE] = {0};
     unsigned long id = 0x00;
     byte ext;
-    byte rtrBit;
+    byte rtr;
     // Make sure len is unsigned - unsigned bytes are native to c
     byte len;
+    int report;
 
     if (sendRandom) {
-        generate_random_message(id, ext, rtrBit, len, payload);
+        generate_random_message(id, ext, rtr, len, payload);
+        report = CAN.sendMsgBuf(id, ext, rtr, len, payload);
     } else {
-        generate_empty_message(id, ext, rtrBit, len, payload);
+        report = CAN.sendMsgBuf(0x00, 0, 0, 8, payload);
     }
-    CAN.sendMsgBuf(id, ext, rtrBit, len, payload);
-    SERIAL_PORT_MONITOR.print("Sent Message:\t");
-    print_can_message_to_monitor(id, len, payload);
+
+    if (report == CAN_SENDMSGTIMEOUT) {
+        // A timeout has occurred
+        SERIAL_PORT_MONITOR.println("A CAN_SENDMSGTIMEOUT has occurred");
+    } else if (report == CAN_GETTXBFTIMEOUT) {
+        // The program has failed to get the next free buffer
+        // This has most likely occurred due to the buffer being full
+        SERIAL_PORT_MONITOR.println("A CAN_GETTXBFTIMEOUT has occurred");
+    } else {
+        // CAN_OK: everything is working
+        SERIAL_PORT_MONITOR.print("Sent Message:\t");
+        print_can_message_to_monitor(id, len, payload);
+        delay(100);
+    }
+
+    if (CAN.checkError() == CAN_CTRLERROR) {
+        SERIAL_PORT_MONITOR.println("A CAN Control Error has occurred."
+                                    " Stopping processes...");
+        SERIAL_PORT_MONITOR.flush();
+        exit(0);
+    }
 }
 
-void send_can(unsigned long id) {
+void send_can(unsigned long id, bool ext_condition, bool rtr_condition) {
     unsigned char payload[MAX_DATA_SIZE] = {0};
-    byte ext = 0x01;
-    byte rtrBit = 0x02;
+    byte ext = (ext_condition) ? 1 : 0;
+    byte rtr = (rtr_condition) ? 1 : 0;
     // Make sure len is unsigned - unsigned bytes are native to c
     byte len;
 
-    generate_random_payload(len, payload, rtrBit);
-    CAN.sendMsgBuf(id, ext, rtrBit, len, payload);
+    generate_random_payload(len, payload, ext, rtr);
+    CAN.sendMsgBuf(id, ext, rtr, len, payload);
     SERIAL_PORT_MONITOR.print("Sent Message:\t");
     print_can_message_to_monitor(id, len, payload);
 }
 
-void send_can(unsigned long id, unsigned char *payload, byte len) {
-    byte ext = 0x01;
-    byte rtrBit = 0x02;
+void send_can(unsigned long id, bool ext_condition, bool rtr_condition,
+              unsigned char *payload, byte len) {
+    byte ext = (ext_condition) ? 1 : 0;
+    byte rtr = (rtr_condition) ? 1 : 0;
 
-    // Sets the length of the data sent.
-    len = CANFD::len2dlc(len);
-
-    CAN.sendMsgBuf(id, ext, rtrBit, len, payload);
+    CAN.sendMsgBuf(id, ext, rtr, len, payload);
     SERIAL_PORT_MONITOR.print("Sent Message:\t");
     print_can_message_to_monitor(id, len, payload);
 }
@@ -221,11 +224,14 @@ void send_can(unsigned long id, unsigned char *payload, byte len) {
 void receive_can() {
     unsigned char len = 0;
     unsigned char buf[MAX_DATA_SIZE];
+    unsigned long canId = 0;
 
     SERIAL_PORT_MONITOR.print("Received Msg:\t");
-    // read data,  len: data length, buf: data buf
-    CAN.readMsgBuf(&len, buf);
-    unsigned long canId = CAN.getCanId();
+    // Reads the data from the CAN message
+    // CAN ID being the CAN ID
+    // len being the length of the message (in bytes)
+    // buf being the buffer to store the message
+    CAN.readMsgBufID(&canId, &len, buf);
 
     // Checks to see if filter is enabled, and if the message should be let
     // through or not
@@ -276,7 +282,7 @@ void SAS(unsigned short angle, bool centered) {
         payload[3] = angle & 0xFF; // Modulus by 256
     }
 
-    send_can(SASID, payload, 4);
+    send_can(SASID, false, false, payload, 4);
 }
 
 /**
@@ -314,7 +320,7 @@ void ABS(bool DSC, bool ABS, bool breakFailure, bool TC) {
         payload[5] = 0b00010000;
     }
 
-    send_can(ABSID, payload, 7);
+    send_can(ABSID, false, false, payload, 7);
 }
 
 /**
@@ -332,7 +338,7 @@ void EPS(bool EPSOn) {
         payload[0] = 0b10000000;
     }
 
-    send_can(EPSID, payload, 1);
+    send_can(EPSID, false, false, payload, 1);
 }
 
 /**
@@ -359,8 +365,8 @@ void WHEEL_SPEEDS(unsigned short speed) {
         payload_10k[i + 1] = (speed + 10000) & 0xFF;
     }
 
-    send_can(WHEELID, payload, 8);
-    send_can(WHEEL10kID, payload_10k, 8);
+    send_can(WHEELID, false, false, payload, 8);
+    send_can(WHEEL10kID, false, false, payload_10k, 8);
 }
 
 /**
@@ -377,7 +383,7 @@ void ODOMETER(bool increment) {
     if (increment) {
         payload[0] = 0b00000001;
     }
-    send_can(ODOMETER_ID, payload, 1);
+    send_can(ODOMETER_ID, false, false, payload, 1);
 }
 
 /**
@@ -425,7 +431,7 @@ void PCM(double RPM, int KMPH, unsigned short throttle) {
     // Static byte
     payload[7] = 0xFF;
 
-    send_can(PCMID, payload, 8);
+    send_can(PCMID, false, false, payload, 8);
 }
 
 /**
@@ -488,7 +494,7 @@ void PCM_IC(short engine_temp, byte odometer_increment, bool oilPressureOK,
         payload[6] |= 0b01000000;
     }
 
-    send_can(PCM_ICID, payload, 7);
+    send_can(PCM_ICID, false, false, payload, 7);
 }
 
 // END FILE ===================================================================
