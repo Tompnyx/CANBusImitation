@@ -52,6 +52,13 @@ void loop() {
         // Sends a random CAN message
         send_can(true);
     }
+
+    if (CAN.checkError() == CAN_CTRLERROR) {
+        SERIAL_PORT_MONITOR.println("A CAN Control Error has occurred."
+                                    " Stopping processes...");
+        SERIAL_PORT_MONITOR.flush();
+        exit(0);
+    }
 }
 
 // CREATE MESSAGES ============================================================
@@ -116,8 +123,8 @@ void generate_random_message(unsigned long &id,
     // would have  a bit of 0
     ext = type & 0x1;
     // RTR is the Remote Request Frame. It is a feature that sends empty
-    // packages requesting data from the target ID. If a CAN FD message is
-    // sent (which has a 29 bit identifier), the 11 most significant bits
+    // packages requesting data from the target ID. If a CAN extended message
+    // is sent (which has a 29 bit identifier), the 11 most significant bits
     // change to the Substitute Remote Request (SRR).
     rtr = type & 0x2;
 
@@ -160,6 +167,21 @@ void print_can_message_to_monitor(unsigned long canId,
 
 // SENDING AND RECEIVING ======================================================
 
+bool check_message_sent(int report) {
+    if (report == CAN_SENDMSGTIMEOUT) {
+        // CAN_SENDMSGTIMEOUT: A timeout has occurred
+        SERIAL_PORT_MONITOR.println("A CAN_SENDMSGTIMEOUT has occurred");
+    } else if (report == CAN_GETTXBFTIMEOUT) {
+        // CAN_GETTXBFTIMEOUT: The program has failed to get the next free
+        // buffer. This has most likely occurred due to the buffer being full.
+        SERIAL_PORT_MONITOR.println("A CAN_GETTXBFTIMEOUT has occurred");
+    } else {
+        // CAN_OK: everything is working
+        return true;
+    }
+    return false;
+}
+
 void send_can(bool sendRandom) {
     unsigned char payload[MAX_DATA_SIZE] = {0};
     unsigned long id = 0x00;
@@ -167,6 +189,7 @@ void send_can(bool sendRandom) {
     byte rtr;
     // Make sure len is unsigned - unsigned bytes are native to c
     byte len;
+    // The return value of sending the message
     int report;
 
     if (sendRandom) {
@@ -176,25 +199,10 @@ void send_can(bool sendRandom) {
         report = CAN.sendMsgBuf(0x00, 0, 0, 8, payload);
     }
 
-    if (report == CAN_SENDMSGTIMEOUT) {
-        // A timeout has occurred
-        SERIAL_PORT_MONITOR.println("A CAN_SENDMSGTIMEOUT has occurred");
-    } else if (report == CAN_GETTXBFTIMEOUT) {
-        // The program has failed to get the next free buffer
-        // This has most likely occurred due to the buffer being full
-        SERIAL_PORT_MONITOR.println("A CAN_GETTXBFTIMEOUT has occurred");
-    } else {
-        // CAN_OK: everything is working
+    if (check_message_sent(report)) {
         SERIAL_PORT_MONITOR.print("Sent Message:\t");
         print_can_message_to_monitor(id, len, payload);
         delay(100);
-    }
-
-    if (CAN.checkError() == CAN_CTRLERROR) {
-        SERIAL_PORT_MONITOR.println("A CAN Control Error has occurred."
-                                    " Stopping processes...");
-        SERIAL_PORT_MONITOR.flush();
-        exit(0);
     }
 }
 
@@ -204,21 +212,33 @@ void send_can(unsigned long id, bool ext_condition, bool rtr_condition) {
     byte rtr = (rtr_condition) ? 1 : 0;
     // Make sure len is unsigned - unsigned bytes are native to c
     byte len;
+    // The return value of sending the message
+    int report;
 
     generate_random_payload(len, payload, ext, rtr);
-    CAN.sendMsgBuf(id, ext, rtr, len, payload);
-    SERIAL_PORT_MONITOR.print("Sent Message:\t");
-    print_can_message_to_monitor(id, len, payload);
+    report = CAN.sendMsgBuf(id, ext, rtr, len, payload);
+
+    if (check_message_sent(report)) {
+        SERIAL_PORT_MONITOR.print("Sent Message:\t");
+        print_can_message_to_monitor(id, len, payload);
+        delay(100);
+    }
 }
 
 void send_can(unsigned long id, bool ext_condition, bool rtr_condition,
               unsigned char *payload, byte len) {
+    // The return value of sending the message
+    int report;
     byte ext = (ext_condition) ? 1 : 0;
     byte rtr = (rtr_condition) ? 1 : 0;
 
-    CAN.sendMsgBuf(id, ext, rtr, len, payload);
-    SERIAL_PORT_MONITOR.print("Sent Message:\t");
-    print_can_message_to_monitor(id, len, payload);
+    report = CAN.sendMsgBuf(id, ext, rtr, len, payload);
+
+    if (check_message_sent(report)) {
+        SERIAL_PORT_MONITOR.print("Sent Message:\t");
+        print_can_message_to_monitor(id, len, payload);
+        delay(100);
+    }
 }
 
 void receive_can() {

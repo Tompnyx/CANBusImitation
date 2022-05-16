@@ -19,6 +19,7 @@ void generate_random_message(unsigned long &id,
 void print_can_message_to_monitor(unsigned long canId,
                                   byte len,
                                   unsigned char *buf);
+bool check_message_sent(int report);
 void send_can(bool sendRandom);
 void send_can(unsigned long id, bool ext_condition, bool rtr_condition);
 void send_can(unsigned long id, bool ext_condition, bool rtr_condition,
