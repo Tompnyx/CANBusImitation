@@ -4,6 +4,7 @@
 #include "generateBenignData.h"
 #include <mcp2515_can.h>
 #include <SPI.h>
+#include <Vehicle.h>
 
 // CONSTANTS ==================================================================
 // Sets the maximum payload size - CANFD can carry data up to 64 bytes, whereas
@@ -21,7 +22,9 @@ unsigned long timeStart;
 // The CAN ID to filter for (If equal to 0 it will be ignored)
 unsigned long filterId = 0;
 // Whether to send (1), receive (2), or do both (0)
-short operationType = 2;
+short operationMode = 0;
+// How many loops in a second
+short lis = 1000;
 
 // ARDUINO FUNCTIONS ==========================================================
 
@@ -42,13 +45,13 @@ void setup() {
 }
 
 void loop() {
-    if (operationType != 1) {
+    if (operationMode != 1) {
         // Checks to see if there is incoming data
         if (CAN_MSGAVAIL == CAN.checkReceive()) {
             receive_can();
         }
     }
-    if (operationType != 1) {
+    if (operationMode != 2) {
         // Sends a random CAN message
         send_can(true);
     }
@@ -261,10 +264,10 @@ void receive_can() {
     }
 }
 
-// CAR FUNCTIONS ==============================================================
+// VEHICLE HARDWARE FUNCTIONS =================================================
 
-// The following code is heavily inspired by the work done by DaveBlackH on his
-// GitHub repository 'MazdaRX8Arduino'. Accessed 09/05/2022 from
+// The following section is heavily inspired by the work done by DaveBlackH on
+// his GitHub repository 'MazdaRX8Arduino'. Accessed 09/05/2022 from
 // https://github.com/DaveBlackH/MazdaRX8Arduino
 
 // Hence, certain features and functions will be loosely based on the Mazda
@@ -280,14 +283,13 @@ void receive_can() {
  *
  * @param angle The angle of the steering wheel(0xFDE1 to 0x021E, 64993 to 542,
  * left to right respectively). It is 0x0000 if centered.
-  * @param centered If the steering wheel is centered or not.
  */
-void SAS(unsigned short angle, bool centered) {
+void SAS(unsigned short angle) {
     unsigned char payload[8] = {0};
     // Generate random first byte
     payload[0] = random(0xFF);
     // Determines whether the steering wheel is centered
-    if (centered) {
+    if (angle == 0) {
         payload[1] = 0xEF;
     } else {
         payload[1] = 0x6F;
@@ -370,7 +372,7 @@ void EPS(bool EPSOn) {
  * Two CAN messages are sent from this module, with the second being the speed
  * of the four wheels plus 10,000
  *
- * @param speed how fast the car is travelling (in kms)
+ * @param speed how fast the vehicle is travelling (in kms)
  */
 void WHEEL_SPEEDS(unsigned short speed) {
     unsigned char payload[8] = {0};
@@ -413,18 +415,18 @@ void ODOMETER(bool increment) {
  * Byte 1/2: The modified value of the RPM sent (Note - the sent RPM is
  * different - Sent RPM = Actual RPM * 3.85
  * Byte 3/4: Static and set to 0xFF
- * Byte 5/6: The modified value of the km per hour speed of the car (Note -
+ * Byte 5/6: The modified value of the km per hour speed of the vehicle (Note -
  * the sent KMPH is different - Sent KMPH = (Actual KMPH * 100) + 10,000)
  * Byte 7: The pressure applied to the throttle pedal (Note - range
  * accounts for 0 to 0xC8 in 0.5% increments)
  * Byte 8: Static and set to 0xFF
  *
- * @param RPM The real RPM of the car
- * @param KMPH The real kilometers per hour of the car
+ * @param RPM The real RPM of the vehicle
+ * @param KMPH The real kilometers per hour of the vehicle
  * @param throttle The pressure applied to the throttle pedal (Note - range
  * accounts for 0 to 0xC8 in 0.5% increments)
  */
-void PCM(double RPM, int KMPH, unsigned short throttle) {
+void PCM(double RPM, unsigned short KMPH, unsigned short throttle) {
     unsigned char payload[8] = {0};
 
     // Convert RPM to the modified value and Big Endian
@@ -468,26 +470,26 @@ void PCM(double RPM, int KMPH, unsigned short throttle) {
  * Byte 7 bit 7: If the battery charge is low
  * Byte 7 bit 8: If the oil pressure light is on
  *
- * @param engine_temp What the engine temperature is (Between 128 to 192)
+ * @param engine_temp What the engine temperature is (Between 128 and 192)
  * @param odometer_increment If the odometer should be incremented
  * @param oilPressureOK If the oil pressure is OK
- * @param engineOn If the engine light is on
+ * @param engineLightOn If the engine light is on
  * @param engineBlinking If the engine light is blinking
  * @param lowCoolant If the coolant fluid is low
  * @param batteryCharge If the battery has low charge/ no charge
  */
-void PCM_IC(short engine_temp, byte odometer_increment, bool oilPressureOK,
-            bool engineOn, bool engineBlinking, bool lowCoolant,
+void PCM_IC(unsigned short engineTemp, bool odometer_increment, bool oilPressureOK,
+            bool engineLightOn, bool engineLightBlinking, bool lowCoolant,
             bool batteryCharge) {
     unsigned char payload[8] = {0};
 
     // Check the range of the engine temperature
-    if (engine_temp < 128) {
+    if (engineTemp < 128) {
         payload[0] = 128;
-    } else if (engine_temp > 192) {
+    } else if (engineTemp > 192) {
         payload[0] = 192;
     } else {
-        payload[0] = engine_temp;
+        payload[0] = engineTemp;
     }
 
     if (odometer_increment) {
@@ -501,9 +503,9 @@ void PCM_IC(short engine_temp, byte odometer_increment, bool oilPressureOK,
     }
 
     // Checks to see if the engine light is on or blinking
-    if (engineBlinking) {
+    if (engineLightBlinking) {
         payload[5] = 0b10000000;
-    } else if (engineOn) {
+    } else if (engineLightOn) {
         payload[5] = 0b01000000;
     }
 
@@ -515,6 +517,41 @@ void PCM_IC(short engine_temp, byte odometer_increment, bool oilPressureOK,
     }
 
     send_can(PCM_ICID, false, false, payload, 7);
+}
+
+// VEHICLE PROCESSES ==========================================================
+
+// This section includes the processes to control the vehicle e.g.,
+// accelerating or breaking the vehicle
+
+/**
+ * Needed as there is no multi-threading present with Arduino. Certain
+ * processes need to update gradually or at the same time.
+ */
+void overview_vehicle_functionality_loop() {
+    Vehicle vehicle;
+    // CHECK IF NO ACTIONS BEING PERFORMED
+    // YES: READ FILE
+
+    vehicle.startAccelerating(60);
+    vehicle.startTurning(42620);
+    vehicle.startBreaking();
+    // YES: SET FLAGS FOR ACTION
+
+    // NO: CHECK CURRENT ACTIONS COMPLETION
+    vehicle.checkTargets(lis);
+
+    // SEND NEEDED MESSAGES
+    SAS(vehicle.currentSteeringAngle);
+    ABS(vehicle.DSC, vehicle.ABS, vehicle.breakFailure, vehicle.TC);
+    EPS(vehicle.EPSOn);
+    WHEEL_SPEEDS(vehicle.currentSpeedInKilometerPerHour());
+    // DO ODOMETER LATER INCLUDING PCMMMMMMMMMMMMMMMMMMMMMMMMM
+    PCM(vehicle.calculateRPM(), vehicle.currentSpeedInKilometerPerHour(),
+        vehicle.accelThrottle);
+    PCM_IC(vehicle.engineTemp, false,vehicle.oilPressureOK,
+           vehicle.engineLightOn,vehicle.engineLightBlinking,
+           vehicle.lowCoolant,vehicle.batteryCharge);
 }
 
 // END FILE ===================================================================

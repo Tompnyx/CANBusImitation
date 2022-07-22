@@ -2,11 +2,10 @@
 // Created by tompnyx on 11/04/2022.
 //
 
-#ifndef CLIONARDUINO_GENERATEBENIGNDATA_H
-#define CLIONARDUINO_GENERATEBENIGNDATA_H
+#ifndef GenerateBenignData_h
+#define GenerateBenignData_h
 #include <Arduino.h>
 #include "generateBenignData_dfs.h"
-
 
 void generate_random_id(unsigned long &id, bool ext);
 void generate_random_payload(byte &len, unsigned char *payload, bool ext,
@@ -25,13 +24,13 @@ void send_can(unsigned long id, bool ext_condition, bool rtr_condition);
 void send_can(unsigned long id, bool ext_condition, bool rtr_condition,
               unsigned char *payload, byte len);
 void receive_can();
-void SAS(unsigned short angle, bool centered);
+void SAS(unsigned short angle);
 void ABS(bool DSC, bool ABS, bool breakFailure, bool TC);
 void EPS(bool EPSOn);
 void WHEEL_SPEEDS(unsigned short speed);
 void ODOMETER(bool increment);
-void PCM(double RPM, int KMPH, unsigned short throttle);
-void PCM_IC(short engine_temp, byte odometer_increment, bool oilPressureOK,
-            bool engineOn, bool engineBlinking, bool lowCoolant,
-            bool batteryCharge);
-#endif //CLIONARDUINO_GENERATEBENIGNDATA_H
+void PCM(double RPM, unsigned short KMPH, unsigned short throttle);
+void PCM_IC(unsigned short engine_temp, bool odometer_increment,
+            bool oilPressureOK, bool engineOn, bool engineBlinking,
+            bool lowCoolant, bool batteryCharge);
+#endif

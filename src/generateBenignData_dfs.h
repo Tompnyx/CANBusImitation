@@ -1,9 +1,9 @@
 //
-// Created by tompn on 15/05/2022.
+// Created by tompnyx on 15/05/2022.
 //
 
-#ifndef CLIONARDUINO_GENERATEBENIGNDATA_DFS_H
-#define CLIONARDUINO_GENERATEBENIGNDATA_DFS_H
+#ifndef GenerateBenignData_dfs_h
+#define GenerateBenignData_dfs_h
 
 // List of ECUs and their priority
 
