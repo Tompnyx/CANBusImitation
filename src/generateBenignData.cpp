@@ -2,9 +2,12 @@
 // Created by tompnyx on 11/04/2022.
 //
 #include "generateBenignData.h"
+#include "Vehicle.h"
+
+#include <Arduino.h>
+#include <ArduinoJson.h>
 #include <mcp2515_can.h>
-#include <SPI.h>
-#include <Vehicle.h>
+#include <SD.h>
 
 // CONSTANTS ==================================================================
 // Sets the maximum payload size - CANFD can carry data up to 64 bytes, whereas
@@ -21,10 +24,28 @@ mcp2515_can CAN(SPI_CS_PIN);
 unsigned long timeStart;
 // The CAN ID to filter for (If equal to 0 it will be ignored)
 unsigned long filterId = 0;
-// Whether to send (1), receive (2), or do both (0)
-short operationMode = 0;
 // How many loops in a second
 short lis = 1000;
+
+// The different operations that can be performed
+enum Operation { sendRandom, receiveOnly, sendRandomAndReceive, performRoute};
+// Change op to set the operation mode
+Operation op = sendRandomAndReceive;
+
+#if op == performRoute
+// The filename of the json file containing the trip information
+const char *filename = "/trip.json";
+// Make sure to set the correct memory pool in bytes (Inside the <> brackets)
+// arduinojson.org/v6/assistant is a useful tool for this.
+StaticJsonDocument<512> doc;
+// The json file that holds the array of actions
+JsonArray trip;
+unsigned short actionAmount;
+// The current action
+unsigned short actionCounter = 0;
+// The amount of iterations before the next action is performed
+int actionDelay;
+#endif
 
 // ARDUINO FUNCTIONS ==========================================================
 
@@ -42,18 +63,39 @@ void setup() {
     timeStart = millis();
     // Initialises the seed randomly
     randomSeed(analogRead(0));
+
+    #if op == performRoute
+    // Read the json file if needed
+    File file = SD.open(filename);
+    // Deserialize the json file
+    DeserializationError jsonError = deserializeJson(doc, file);
+
+    // Test if the parsing succeeded
+    if (jsonError) {
+        SERIAL_PORT_MONITOR.print("deserializeJson() failed: ");
+        SERIAL_PORT_MONITOR.println(jsonError.f_str());
+        return;
+    }
+
+    trip = doc["trip"];
+    actionAmount = doc["actionAmount"];
+    #endif
 }
 
 void loop() {
-    if (operationMode != 1) {
-        // Checks to see if there is incoming data
-        if (CAN_MSGAVAIL == CAN.checkReceive()) {
-            receive_can();
+    if (op == performRoute) {
+        overview_vehicle_functionality_loop();
+    } else {
+        if (op != sendRandom) {
+            // Checks to see if there is incoming data
+            if (CAN_MSGAVAIL == CAN.checkReceive()) {
+                receive_can();
+            }
         }
-    }
-    if (operationMode != 2) {
-        // Sends a random CAN message
-        send_can(true);
+        if (op != receiveOnly) {
+            // Sends a random CAN message
+            send_can(true);
+        }
     }
 
     if (CAN.checkError() == CAN_CTRLERROR) {
@@ -530,18 +572,34 @@ void PCM_IC(unsigned short engineTemp, bool odometer_increment, bool oilPressure
  */
 void overview_vehicle_functionality_loop() {
     Vehicle vehicle;
-    // CHECK IF NO ACTIONS BEING PERFORMED
-    // YES: READ FILE
+    // Check to see if there is a current delay. If not, the next action will
+    // be read and performed.
 
-    vehicle.startAccelerating(60);
-    vehicle.startTurning(42620);
-    vehicle.startBreaking();
-    // YES: SET FLAGS FOR ACTION
+    if (actionDelay == 0) {
+        if (actionCounter >= actionAmount) {
+            // Trip is done
+            exit(0);
+        } else {
+            if (strncmp(trip[actionCounter]["action"], "accelerate",
+                        10) == 0) {
+                vehicle.startAccelerating(trip[actionCounter]["target"]);
+            } else if (strncmp(trip[actionCounter]["action"], "turn",
+                               4) == 0) {
+                vehicle.startTurning(trip[actionCounter]["target"]);
+            } else if (strncmp(trip[actionCounter]["action"], "break",
+                               5) == 0) {
+                vehicle.startBreaking();
+            }
+            // Set delay and increase action counter
+            actionDelay = trip[actionCounter]["delay"];
+            actionCounter++;
+        }
+    }
 
-    // NO: CHECK CURRENT ACTIONS COMPLETION
+    // Check Current Action Completion
     vehicle.checkTargets(lis);
 
-    // SEND NEEDED MESSAGES
+    // Send the needed messages
     SAS(vehicle.currentSteeringAngle);
     ABS(vehicle.DSC, vehicle.ABS, vehicle.breakFailure, vehicle.TC);
     EPS(vehicle.EPSOn);

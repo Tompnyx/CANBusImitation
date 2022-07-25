@@ -33,4 +33,5 @@ void PCM(double RPM, unsigned short KMPH, unsigned short throttle);
 void PCM_IC(unsigned short engine_temp, bool odometer_increment,
             bool oilPressureOK, bool engineOn, bool engineBlinking,
             bool lowCoolant, bool batteryCharge);
+void overview_vehicle_functionality_loop();
 #endif
