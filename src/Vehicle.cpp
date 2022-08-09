@@ -19,8 +19,7 @@ Vehicle::Vehicle() {
     breakFailure = false;
     TC = false;
     EPSOn = false;
-    // Generate a random value for the odometer
-    odometer = (unsigned short) random(0, 200000);
+
     // Generate random value for the temperature of the engine
     engineTemp = (unsigned short) random(128, 192);
     oilPressureOK = true;
@@ -36,6 +35,8 @@ Vehicle::Vehicle() {
     currentSteeringAngle = 0;
     _accelTargetSpeed = 0;
     _breakTargetSpeed = 0;
+    // Generate a random value for the odometer
+    _odometer = (float) random(0, 200000);
     _steeringTargetAngle = 0;
 }
 
@@ -100,6 +101,13 @@ void Vehicle::startTurning(unsigned short angle) {
 void Vehicle::updateBreaking(short lis) {
     currentSpeed -= floor(currentSpeed * breakThrottle
             * breakThrottleRatio / (0xC8 * lis));
+}
+
+bool Vehicle::updateOdometer(short lis) {
+    double newOdometer = _odometer + ((double) currentSpeed) / lis;
+    bool hasIncremented = (floor(_odometer) < floor(newOdometer));
+    _odometer = newOdometer;
+    return hasIncremented;
 }
 
 void Vehicle::updateSpeed(short lis) {

@@ -24,8 +24,8 @@ mcp2515_can CAN(SPI_CS_PIN);
 unsigned long timeStart;
 // The CAN ID to filter for (If equal to 0 it will be ignored)
 unsigned long filterId = 0;
-// How many loops in a second
-short lis = 1000;
+// How many loops in a second. The target is a 'loop' every 0.0002 seconds.
+short lis = 5000;
 
 // The different operations that can be performed
 enum Operation { sendRandom, receiveOnly, sendRandomAndReceive, performRoute};
@@ -600,14 +600,15 @@ void overview_vehicle_functionality_loop() {
     vehicle.checkTargets(lis);
 
     // Send the needed messages
+    bool odoHasIncreased = vehicle.updateOdometer(lis);
     SAS(vehicle.currentSteeringAngle);
     ABS(vehicle.DSC, vehicle.ABS, vehicle.breakFailure, vehicle.TC);
     EPS(vehicle.EPSOn);
     WHEEL_SPEEDS(vehicle.currentSpeedInKilometerPerHour());
-    // DO ODOMETER LATER INCLUDING PCMMMMMMMMMMMMMMMMMMMMMMMMM
+    ODOMETER(odoHasIncreased);
     PCM(vehicle.calculateRPM(), vehicle.currentSpeedInKilometerPerHour(),
         vehicle.accelThrottle);
-    PCM_IC(vehicle.engineTemp, false,vehicle.oilPressureOK,
+    PCM_IC(vehicle.engineTemp, odoHasIncreased,vehicle.oilPressureOK,
            vehicle.engineLightOn,vehicle.engineLightBlinking,
            vehicle.lowCoolant,vehicle.batteryCharge);
 }

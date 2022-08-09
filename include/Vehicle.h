@@ -54,8 +54,6 @@ public:
     // The angle of the vehicle between 64993 and 542 (left to right). It is 0
     // if centered.
     unsigned short currentSteeringAngle;
-    // The distance travelled in kilometers by the vehicle
-    unsigned short odometer;
 
     // The accelerating throttle value (between 0 and 200)
     unsigned short accelThrottle;
@@ -71,12 +69,15 @@ public:
     void startAccelerating(unsigned short targetSpeed);
     void startBreaking();
     void startTurning(unsigned short angle);
+    bool updateOdometer(short lis);
 
 private:
     // The target speed of the vehicle
     unsigned short _accelTargetSpeed;
     // The target speed of the vehicle when breaking
     unsigned short _breakTargetSpeed;
+    // The distance travelled in kilometers by the vehicle
+    double _odometer;
     // The target angle of the vehicle
     unsigned short _steeringTargetAngle;
 
