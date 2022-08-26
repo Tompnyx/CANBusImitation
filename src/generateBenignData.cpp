@@ -30,11 +30,10 @@ short lis = 5000;
 // The different operations that can be performed
 enum Operation { sendRandom, receiveOnly, sendRandomAndReceive, performRoute};
 // Change op to set the operation mode
-Operation op = sendRandomAndReceive;
+Operation op = performRoute;
 
-#if op == performRoute
 // The filename of the json file containing the trip information
-const char *filename = "/trip.json";
+const char *filename = "trip.json";
 // Make sure to set the correct memory pool in bytes (Inside the <> brackets)
 // arduinojson.org/v6/assistant is a useful tool for this.
 StaticJsonDocument<512> doc;
@@ -45,7 +44,6 @@ unsigned short actionAmount;
 unsigned short actionCounter = 0;
 // The amount of iterations before the next action is performed
 int actionDelay;
-#endif
 
 // ARDUINO FUNCTIONS ==========================================================
 
@@ -64,22 +62,22 @@ void setup() {
     // Initialises the seed randomly
     randomSeed(analogRead(0));
 
-    #if op == performRoute
-    // Read the json file if needed
-    File file = SD.open(filename);
-    // Deserialize the json file
-    DeserializationError jsonError = deserializeJson(doc, file);
+    if (op == performRoute) {
+        // Read the json file if needed
+        File file = SD.open(filename);
+        // Deserialize the json file
+        DeserializationError jsonError = deserializeJson(doc, file);
 
-    // Test if the parsing succeeded
-    if (jsonError) {
-        SERIAL_PORT_MONITOR.print("deserializeJson() failed: ");
-        SERIAL_PORT_MONITOR.println(jsonError.f_str());
-        return;
+        // Test if the parsing succeeded
+        if (jsonError) {
+            SERIAL_PORT_MONITOR.print("deserializeJson() failed: ");
+            SERIAL_PORT_MONITOR.println(jsonError.f_str());
+            return;
+        }
+
+        trip = doc["trip"];
+        actionAmount = doc["actionAmount"];
     }
-
-    trip = doc["trip"];
-    actionAmount = doc["actionAmount"];
-    #endif
 }
 
 void loop() {
@@ -201,10 +199,9 @@ void print_can_message_to_monitor(unsigned long canId,
     SERIAL_PORT_MONITOR.print("\t");
     // Prints the message to terminal
     for (int i = 0; i < len; i++) {
-        SERIAL_PORT_MONITOR.print(buf[i], HEX);
-        if (buf[i] < 16) {
-            SERIAL_PORT_MONITOR.print("0");
-        }
+        char tmp[3];
+        sprintf(tmp, "%.2x", buf[i]);
+        SERIAL_PORT_MONITOR.print(tmp);
         SERIAL_PORT_MONITOR.print(" ");
     }
     SERIAL_PORT_MONITOR.println();
@@ -247,7 +244,6 @@ void send_can(bool sendRandom) {
     if (check_message_sent(report)) {
         SERIAL_PORT_MONITOR.print("Sent Message:\t");
         print_can_message_to_monitor(id, len, payload);
-        delay(100);
     }
 }
 
@@ -266,7 +262,6 @@ void send_can(unsigned long id, bool ext_condition, bool rtr_condition) {
     if (check_message_sent(report)) {
         SERIAL_PORT_MONITOR.print("Sent Message:\t");
         print_can_message_to_monitor(id, len, payload);
-        delay(100);
     }
 }
 
@@ -282,7 +277,6 @@ void send_can(unsigned long id, bool ext_condition, bool rtr_condition,
     if (check_message_sent(report)) {
         SERIAL_PORT_MONITOR.print("Sent Message:\t");
         print_can_message_to_monitor(id, len, payload);
-        delay(100);
     }
 }
 
