@@ -10,13 +10,9 @@ set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_C_COMPILER_WORKS 1)
 set(CMAKE_CXX_COMPILER_WORKS 1)
 
-project("CANbusImitation" C CXX)
+project("CANBusImitation" C CXX)
 
 include(CMakeListsPrivate.txt)
-
-include_directories("${CMAKE_CURRENT_LIST_DIR}/lib/ArduinoJson-v6.19.4/src")
-include_directories("${CMAKE_CURRENT_LIST_DIR}/lib/SD-1.2.4/src")
-include_directories("${CMAKE_CURRENT_LIST_DIR}/lib/Seeed_Arduino_CAN-2.3.1/src")
 
 if(EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/CMakeListsUser.txt)
 include(CMakeListsUser.txt)

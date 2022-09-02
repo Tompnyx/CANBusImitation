@@ -1,7 +1,7 @@
 //
 // Created by tompnyx on 11/04/2022.
 //
-#include "generateBenignData.h"
+#include "benignGenerator.h"
 #include "Vehicle.h"
 
 #include <Arduino.h>
@@ -105,7 +105,6 @@ void loop() {
 }
 
 // CREATE MESSAGES ============================================================
-
 
 void generate_random_id(unsigned long &id, bool ext) {
     if (ext) {

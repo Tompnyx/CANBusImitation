@@ -2,10 +2,10 @@
 // Created by tompnyx on 11/04/2022.
 //
 
-#ifndef GenerateBenignData_h
-#define GenerateBenignData_h
+#ifndef benignGenerator_h
+#define benignGenerator_h
 #include <Arduino.h>
-#include "generateBenignData_dfs.h"
+#include "benignGenerator_dfs.h"
 
 void generate_random_id(unsigned long &id, bool ext);
 void generate_random_payload(byte &len, unsigned char *payload, bool ext,
