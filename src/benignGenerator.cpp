@@ -1,5 +1,5 @@
 //
-// Created by tompnyx on 11/04/2022.
+// Created by Tompnyx on 11/04/2022.
 //
 #include "benignGenerator.h"
 #include "Vehicle.h"
@@ -13,11 +13,14 @@
 // Sets the maximum payload size - CANFD can carry data up to 64 bytes, whereas
 // CAN 2.0 can only carry up to 8 bytes
 #define MAX_DATA_SIZE 8
+// The baud rate of the board
+#define BAUD 115200
 
 // PUBLIC VARIABLES ===========================================================
 // CAN_2515
 const int SPI_CS_PIN = 10;
 const int CAN_INT_PIN = 2;
+const int SD_SPI_CS_PIN = 4;
 // Set CS pin
 mcp2515_can CAN(SPI_CS_PIN);
 // The time the device started
@@ -33,10 +36,12 @@ enum Operation { sendRandom, receiveOnly, sendRandomAndReceive, performRoute};
 Operation op = performRoute;
 
 // The filename of the json file containing the trip information
-const char *filename = "trip.json";
+const char *filename = "ST.txt";
 // Make sure to set the correct memory pool in bytes (Inside the <> brackets)
-// arduinojson.org/v6/assistant is a useful tool for this.
-StaticJsonDocument<512> doc;
+// https://arduinojson.org/v6/assistant is a useful tool for this.
+// Please look at the documentation for further information:
+// https://arduinojson.org/v6/doc/deserialization/
+const int capacity = 192;
 // The json file that holds the array of actions
 JsonArray trip;
 unsigned short actionAmount;
@@ -48,39 +53,30 @@ int actionDelay;
 // ARDUINO FUNCTIONS ==========================================================
 
 void setup() {
-    SERIAL_PORT_MONITOR.begin(115200);
-    // wait for Serial
+    // Initialise the board at the specified baud
+    SERIAL_PORT_MONITOR.begin(BAUD);
+    // Wait for a serial connection
     while (!SERIAL_PORT_MONITOR);
-    // init can bus at a baudrate = 500k
+    // Initialise the CAN board at the specified speed
     if (CAN_OK != CAN.begin(CAN_500KBPS)) {
         SERIAL_PORT_MONITOR.println("CAN init fail");
-    } else {
-        SERIAL_PORT_MONITOR.println("CAN init ok!");
+        SERIAL_PORT_MONITOR.flush();
+        return;
     }
+    SERIAL_PORT_MONITOR.println("CAN init ok!");
     // Records the time the device started looping
     timeStart = millis();
     // Initialises the seed randomly
     randomSeed(analogRead(0));
 
+    // Initialises the performRoute option if selected
     if (op == performRoute) {
-        // Read the json file if needed
-        File file = SD.open(filename);
-        // Deserialize the json file
-        DeserializationError jsonError = deserializeJson(doc, file);
-
-        // Test if the parsing succeeded
-        if (jsonError) {
-            SERIAL_PORT_MONITOR.print("deserializeJson() failed: ");
-            SERIAL_PORT_MONITOR.println(jsonError.f_str());
-            return;
-        }
-
-        trip = doc["trip"];
-        actionAmount = doc["actionAmount"];
+        initialiseJsonObject();
     }
 }
 
 void loop() {
+    // Performs the performRoute option if selected
     if (op == performRoute) {
         overview_vehicle_functionality_loop();
     } else {
@@ -102,6 +98,51 @@ void loop() {
         SERIAL_PORT_MONITOR.flush();
         exit(0);
     }
+}
+
+// SETUP JSON OBJECT ==========================================================
+
+void initialiseJsonObject() {
+    // init the sd card
+    if (!SD.begin(SD_SPI_CS_PIN)) {
+        SERIAL_PORT_MONITOR.println("SD init fail");
+        SERIAL_PORT_MONITOR.flush();
+        return;
+    }
+    SERIAL_PORT_MONITOR.println("SD init ok!");
+
+    // Read the json file if needed
+    File myFile = SD.open(filename, FILE_READ);
+    // Test that the file is available
+    if (!myFile) {
+        SERIAL_PORT_MONITOR.println("File failed to open");
+        SERIAL_PORT_MONITOR.flush();
+        return;
+    }
+    SERIAL_PORT_MONITOR.println("File opened successfully");
+
+    // Create the json object
+    StaticJsonDocument<capacity> doc;
+    // Deserialize the json file
+    DeserializationError jsonError = deserializeJson(doc, myFile);
+
+    // Test if the parsing succeeded
+    if (jsonError) {
+        SERIAL_PORT_MONITOR.print("deserializeJson() failed: ");
+        SERIAL_PORT_MONITOR.println(jsonError.f_str());
+        SERIAL_PORT_MONITOR.flush();
+        return;
+    }
+
+    // Read the needed information from the Json Object
+    trip = doc["trip"];
+    actionAmount = doc["actionAmount"].as<int>();
+
+    // Close the file
+    myFile.close();
+
+    // Flush the Serial port to ensure all 'printed' messages have been sent
+    SERIAL_PORT_MONITOR.flush();
 }
 
 // CREATE MESSAGES ============================================================
@@ -129,11 +170,11 @@ void generate_random_payload(byte &len, unsigned char *payload, bool ext,
         // Here a normal message is randomly generated.
         // Remember the condition max in the function random is exclusive to
         // the upper bound.
-#if MAX_DATA_SIZE > 8
+    #if MAX_DATA_SIZE > 8
         len = ext ? random(16) : random(9);
-#else
+    #else
         len = random(9);
-#endif
+    #endif
     }
 
     // Populate the payload (message buffer) with random values.
@@ -457,11 +498,11 @@ void ODOMETER(bool increment) {
  * Byte 8: Static and set to 0xFF
  *
  * @param RPM The real RPM of the vehicle
- * @param KMPH The real kilometers per hour of the vehicle
+ * @param kmph The real kilometers per hour of the vehicle
  * @param throttle The pressure applied to the throttle pedal (Note - range
  * accounts for 0 to 0xC8 in 0.5% increments)
  */
-void PCM(double RPM, unsigned short KMPH, unsigned short throttle) {
+void PCM(double RPM, unsigned short kmph, unsigned short throttle) {
     unsigned char payload[8] = {0};
 
     // Convert RPM to the modified value and Big Endian
@@ -474,9 +515,9 @@ void PCM(double RPM, unsigned short KMPH, unsigned short throttle) {
     payload[3] = 0xFF;
 
     // Convert KMPH to the modified value and Big Endian
-    KMPH = (KMPH * 100) + 10000;
-    payload[4] = (short) KMPH >> 8;
-    payload[5] = (short) KMPH * 0xFF;
+    kmph = (kmph * 100) + 10000;
+    payload[4] = (short) kmph >> 8;
+    payload[5] = (short) kmph * 0xFF;
 
     // Check throttle lies within bounds
     if (throttle > 0xC8) {
@@ -505,17 +546,17 @@ void PCM(double RPM, unsigned short KMPH, unsigned short throttle) {
  * Byte 7 bit 7: If the battery charge is low
  * Byte 7 bit 8: If the oil pressure light is on
  *
- * @param engine_temp What the engine temperature is (Between 128 and 192)
- * @param odometer_increment If the odometer should be incremented
+ * @param engineTemp What the engine temperature is (Between 128 and 192)
+ * @param odometerIncrement If the odometer should be incremented
  * @param oilPressureOK If the oil pressure is OK
  * @param engineLightOn If the engine light is on
- * @param engineBlinking If the engine light is blinking
+ * @param engineLightBlinking If the engine light is blinking
  * @param lowCoolant If the coolant fluid is low
  * @param batteryCharge If the battery has low charge/ no charge
  */
-void PCM_IC(unsigned short engineTemp, bool odometer_increment, bool oilPressureOK,
-            bool engineLightOn, bool engineLightBlinking, bool lowCoolant,
-            bool batteryCharge) {
+void PCM_IC(unsigned short engineTemp, bool odometerIncrement,
+            bool oilPressureOK, bool engineLightOn, bool engineLightBlinking,
+            bool lowCoolant, bool batteryCharge) {
     unsigned char payload[8] = {0};
 
     // Check the range of the engine temperature
@@ -527,7 +568,7 @@ void PCM_IC(unsigned short engineTemp, bool odometer_increment, bool oilPressure
         payload[0] = engineTemp;
     }
 
-    if (odometer_increment) {
+    if (odometerIncrement) {
         payload[1] = 0b00000001;
     }
 

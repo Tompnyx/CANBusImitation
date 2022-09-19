@@ -7,6 +7,7 @@
 #include <Arduino.h>
 #include "benignGenerator_dfs.h"
 
+void initialiseJsonObject();
 void generate_random_id(unsigned long &id, bool ext);
 void generate_random_payload(byte &len, unsigned char *payload, bool ext,
                              bool rtr);
@@ -29,9 +30,9 @@ void ABS(bool DSC, bool ABS, bool breakFailure, bool TC);
 void EPS(bool EPSOn);
 void WHEEL_SPEEDS(unsigned short speed);
 void ODOMETER(bool increment);
-void PCM(double RPM, unsigned short KMPH, unsigned short throttle);
-void PCM_IC(unsigned short engine_temp, bool odometer_increment,
-            bool oilPressureOK, bool engineOn, bool engineBlinking,
+void PCM(double RPM, unsigned short kmph, unsigned short throttle);
+void PCM_IC(unsigned short engineTemp, bool odometerIncrement,
+            bool oilPressureOK, bool engineLightOn, bool engineLightBlinking,
             bool lowCoolant, bool batteryCharge);
 void overview_vehicle_functionality_loop();
 #endif
