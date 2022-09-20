@@ -39,7 +39,7 @@ To perform the different functionality of the program, four different operationa
 - **sendRandomAndReceive** is the combination of both **sendRandom** and **receiveOnly**
 - **performRoute** generates CAN messages in accordance to a predetermined trip
 
-Note that the **performRoute** mode requires: SD card capabilities, a SD card, and a JSON file containing the trip information on that SD card. The filename of the json file needs to replace the value of the variable **filename**. You will also need to calculate the memory pool (in bytes) needed to deserialize the json file. [ArduinoJsonAssistant](https://arduinojson.org/v6/assistant) is a useful tool for this. For further information, please refer to the [documentation](https://arduinojson.org/v6/doc/deserialization/) for deserialization. An example trip called **trip.json** can be found in the folder **ExampleTrips**.
+Note that the **performRoute** mode requires: SD card capabilities, a SD card, and a JSON file containing the trip information on that SD card. The filename of the json file needs to replace the value of the variable **filename**. You will also need to calculate the memory pool (in bytes) needed to deserialize the json file. [ArduinoJsonAssistant](https://arduinojson.org/v6/assistant) is a useful tool for this. For further information, please refer to the [documentation](https://arduinojson.org/v6/doc/deserialization/) for deserialization. An example trip called **trip.txt** can be found in the folder **ExampleTrips**. Also, please note that certain Arduino boards might not work with file extensions with more than three characters.
 
 An optional filter ID can also be set when receiving an Arbitration/ CAN ID.
 

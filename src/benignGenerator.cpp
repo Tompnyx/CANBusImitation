@@ -32,7 +32,7 @@ enum Operation { sendRandom, receiveOnly, sendRandomAndReceive, performRoute};
 Operation op = performRoute;
 
 // The filename of the json file containing the trip information
-const char *filename = "trip.json";
+const char *filename = "trip.txt";
 // Make sure to set the correct memory pool in bytes.
 // https://arduinojson.org/v6/assistant is a useful tool for this.
 // Please look at the documentation for further information:
