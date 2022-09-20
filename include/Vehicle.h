@@ -1,5 +1,5 @@
 //
-// Created by tompnyx on 20/07/2022.
+// Created by Tompnyx on 20/07/2022.
 //
 
 #ifndef Vehicle_h
@@ -60,15 +60,67 @@ public:
     // The breaking throttle value (between 0 and 200)
     unsigned short breakThrottle;
 
+    /**
+     * @return The RPM of the vehicle
+     */
     double calculateRPM() const;
+
+    /**
+     * @return The current speed of the vehicle in kilometers per hour
+     */
     unsigned short currentSpeedInKilometerPerHour() const;
+
+    /**
+     * Check if the acceleration target has been met.
+     *
+     * @param lis The number of loops that the arduino performs in a second
+     */
     void checkAccelerationTarget(short lis);
+
+    /**
+     * Check if the breaking target has been met.
+     *
+     * @param lis The number of loops that the arduino performs in a second
+     */
     void checkBreakingTarget(short lis);
+
+    /**
+     * Check if the steering target has been met.
+     */
     void checkSteeringTarget();
+
+    /**
+     * Check to see if all targets have been met.
+     *
+     * @param lis The number of loops that the arduino performs in a second
+     */
     void checkTargets(short lis);
+
+    /**
+     * Used to accelerate the vehicle.
+     *
+     * @param targetSpeed The target speed to accelerate up to
+     */
     void startAccelerating(unsigned short targetSpeed);
+
+    /**
+     * Used to break the vehicle.
+     */
     void startBreaking();
+
+    /**
+     * Used to turn the vehicle.
+     *
+     * @param angle The angle to turn up to
+     */
     void startTurning(unsigned short angle);
+
+    /**
+     * Used to update the odometer after a kilometer has passed.
+     *
+     * @param lis The number of loops that the arduino performs in a second
+     * @return If the odometer needed to be incremented or not
+     */
     bool updateOdometer(short lis);
 
 private:
@@ -81,8 +133,24 @@ private:
     // The target angle of the vehicle
     unsigned short _steeringTargetAngle;
 
+    /**
+     * Updates the breaking value. Used to incrementally break.
+     *
+     * @param lis The number of loops that the arduino performs in a second
+     */
     void updateBreaking(short lis);
+
+    /**
+     * Updates the accelerating value. Used to incrementally accelerate.
+     *
+     * @param lis The number of loops that the arduino performs in a second
+     */
     void updateSpeed(short lis);
+
+    /**
+     * Updates the turning value. Used to incrementally turn.
+     */
     void updateTurning();
 };
+
 #endif

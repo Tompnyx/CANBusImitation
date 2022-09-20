@@ -1,5 +1,5 @@
 //
-// Created by tompnyx on 15/05/2022.
+// Created by Tompnyx on 15/05/2022.
 //
 
 #ifndef GenerateBenignData_dfs_h
@@ -15,6 +15,11 @@
 #define WHEEL10kID 0x4b0
 #define PCMID 0x201
 #define PCM_ICID 0x420
+// MISC
+#define ODOMETER_ID 0x4c0
+
+// Not implemented
+// CHASSIS
 #define AWDCMID 0x00000FF2
 
 //LIGHTS
@@ -61,6 +66,5 @@
 #define TOUCHSCREEN 0x00005FF1
 #define CENTRALBODYCONTROL 0x00000C54
 #define CRUISE_CONTROLID 0x650
-#define ODOMETER_ID 0x4c0
 
-#endif //CLIONARDUINO_GENERATEBENIGNDATA_DFS_H
+#endif

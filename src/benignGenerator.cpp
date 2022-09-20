@@ -15,40 +15,44 @@
 #define MAX_DATA_SIZE 8
 // The baud rate of the board
 #define BAUD 115200
+// The SPI CS Pin of the Arduino
+#define SPI_CS_PIN 10
+// The CS Int Pin of the Arduino
+#define CAN_INT_PIN 2
+// The SD SPI CS PIN of the Arduino (If your Arduino or CAN-BUS shield has SD
+// card capabilities
+#define SD_SPI_CS_PIN 4
 
 // PUBLIC VARIABLES ===========================================================
-// CAN_2515
-const int SPI_CS_PIN = 10;
-const int CAN_INT_PIN = 2;
-const int SD_SPI_CS_PIN = 4;
-// Set CS pin
+// Sets CS pin (as defined above)
 mcp2515_can CAN(SPI_CS_PIN);
-// The time the device started
-unsigned long timeStart;
-// The CAN ID to filter for (If equal to 0 it will be ignored)
-unsigned long filterId = 0;
-// How many loops in a second. The target is a 'loop' every 0.0002 seconds.
-short lis = 5000;
-
 // The different operations that can be performed
 enum Operation { sendRandom, receiveOnly, sendRandomAndReceive, performRoute};
 // Change op to set the operation mode
 Operation op = performRoute;
 
 // The filename of the json file containing the trip information
-const char *filename = "ST.txt";
-// Make sure to set the correct memory pool in bytes (Inside the <> brackets)
+const char *filename = "trip.json";
+// Make sure to set the correct memory pool in bytes.
 // https://arduinojson.org/v6/assistant is a useful tool for this.
 // Please look at the documentation for further information:
 // https://arduinojson.org/v6/doc/deserialization/
 const int capacity = 192;
 // The json file that holds the array of actions
 JsonArray trip;
+// The total amount of actions needed to
 unsigned short actionAmount;
 // The current action
 unsigned short actionCounter = 0;
 // The amount of iterations before the next action is performed
 int actionDelay;
+
+// The time the device started
+unsigned long timeStart;
+// The CAN ID to filter for (If equal to 0 it will be ignored)
+unsigned long filterId = 0;
+// How many loops in a second. The target is a 'loop' every 0.0002 seconds.
+short lis = 5000;
 
 // ARDUINO FUNCTIONS ==========================================================
 
@@ -173,6 +177,7 @@ void generate_random_payload(byte &len, unsigned char *payload, bool ext,
     #if MAX_DATA_SIZE > 8
         len = ext ? random(16) : random(9);
     #else
+        // Generates a random value between 0 and 8.
         len = random(9);
     #endif
     }
@@ -349,17 +354,6 @@ void receive_can() {
 // Hence, certain features and functions will be loosely based on the Mazda
 // RX8 model.
 
-/**
- * Steering Angle Sensor
- *
- * len = 4
- * Byte 1: Unknown
- * Byte 2: Indicator if steering is centered
- * Byte 3/4: The angle of the steering wheel
- *
- * @param angle The angle of the steering wheel(0xFDE1 to 0x021E, 64993 to 542,
- * left to right respectively). It is 0x0000 if centered.
- */
 void SAS(unsigned short angle) {
     unsigned char payload[8] = {0};
     // Generate random first byte
@@ -383,21 +377,6 @@ void SAS(unsigned short angle) {
     send_can(SASID, false, false, payload, 4);
 }
 
-/**
- * Anti-lock Breaking System
- *
- * len = 7
- * Byte 4 bit 3: DSC
- * Byte 5 bit 4: ABS
- * Byte 5 bit 7: breakFailure
- * Byte 6 bit 5: TC off
- * Byte 6 bit 6: TC on
- *
- * @param DSC If the Dynamic Stability Control is active
- * @param ABS If the Anti-lock Breaking System is active
- * @param breakFailure If the hand break or breaks have failed
- * @param TC If the Traction Control is active or not
- */
 void ABS(bool DSC, bool ABS, bool breakFailure, bool TC) {
     unsigned char payload[8] = {0};
 
@@ -421,14 +400,6 @@ void ABS(bool DSC, bool ABS, bool breakFailure, bool TC) {
     send_can(ABSID, false, false, payload, 7);
 }
 
-/**
- * Electronic Power Steering
- *
- * len = 1
- * Byte 1 bit 8: Determines whether the EPS is on or off (1 for on, 0 for off)
- *
- * @param on Determines whether the EPS is on or off
- */
 void EPS(bool EPSOn) {
     unsigned char payload[8] = {0};
 
@@ -439,17 +410,6 @@ void EPS(bool EPSOn) {
     send_can(EPSID, false, false, payload, 1);
 }
 
-/**
- * The four wheel speeds
- *
- * len = 8
- * Each wheel takes up two bytes, with the order being:
- * Front Left, Front Right, Rear Left, Rear Right.
- * Two CAN messages are sent from this module, with the second being the speed
- * of the four wheels plus 10,000
- *
- * @param speed how fast the vehicle is travelling (in kms)
- */
 void WHEEL_SPEEDS(unsigned short speed) {
     unsigned char payload[8] = {0};
     unsigned char payload_10k[8] = {0};
@@ -467,15 +427,6 @@ void WHEEL_SPEEDS(unsigned short speed) {
     send_can(WHEEL10kID, false, false, payload_10k, 8);
 }
 
-/**
- * The odometer
- *
- * len = 1
- * Byte 1: Changes from 1 to 0 when 1km has been travelled. Used to increment
- * the odometer
- *
- * @param increment To increment the odometer or not
- */
 void ODOMETER(bool increment) {
     unsigned char payload[8] = {0};
     if (increment) {
@@ -484,24 +435,6 @@ void ODOMETER(bool increment) {
     send_can(ODOMETER_ID, false, false, payload, 1);
 }
 
-/**
- * Powertrain Control Module
- *
- * len = 8
- * Byte 1/2: The modified value of the RPM sent (Note - the sent RPM is
- * different - Sent RPM = Actual RPM * 3.85
- * Byte 3/4: Static and set to 0xFF
- * Byte 5/6: The modified value of the km per hour speed of the vehicle (Note -
- * the sent KMPH is different - Sent KMPH = (Actual KMPH * 100) + 10,000)
- * Byte 7: The pressure applied to the throttle pedal (Note - range
- * accounts for 0 to 0xC8 in 0.5% increments)
- * Byte 8: Static and set to 0xFF
- *
- * @param RPM The real RPM of the vehicle
- * @param kmph The real kilometers per hour of the vehicle
- * @param throttle The pressure applied to the throttle pedal (Note - range
- * accounts for 0 to 0xC8 in 0.5% increments)
- */
 void PCM(double RPM, unsigned short kmph, unsigned short throttle) {
     unsigned char payload[8] = {0};
 
@@ -532,28 +465,6 @@ void PCM(double RPM, unsigned short kmph, unsigned short throttle) {
     send_can(PCMID, false, false, payload, 8);
 }
 
-/**
- * The Powertrain Control Module Instrument Cluster
- *
- * len = 7
- * Byte 1: Contains the engine temperature
- * Byte 2: Contains the odometer value
- * Byte 3/4: Unknown, set to 0
- * Byte 5: If the oil pressure is okay (0 for fault, >=1 for OK)
- * Byte 6 bit 7: If the engine light is on
- * Byte 6 bit 8: If the engine light is blinking
- * Byte 7 bit 2: If the coolant is low
- * Byte 7 bit 7: If the battery charge is low
- * Byte 7 bit 8: If the oil pressure light is on
- *
- * @param engineTemp What the engine temperature is (Between 128 and 192)
- * @param odometerIncrement If the odometer should be incremented
- * @param oilPressureOK If the oil pressure is OK
- * @param engineLightOn If the engine light is on
- * @param engineLightBlinking If the engine light is blinking
- * @param lowCoolant If the coolant fluid is low
- * @param batteryCharge If the battery has low charge/ no charge
- */
 void PCM_IC(unsigned short engineTemp, bool odometerIncrement,
             bool oilPressureOK, bool engineLightOn, bool engineLightBlinking,
             bool lowCoolant, bool batteryCharge) {
@@ -600,10 +511,6 @@ void PCM_IC(unsigned short engineTemp, bool odometerIncrement,
 // This section includes the processes to control the vehicle e.g.,
 // accelerating or breaking the vehicle
 
-/**
- * Needed as there is no multi-threading present with Arduino. Certain
- * processes need to update gradually or at the same time.
- */
 void overview_vehicle_functionality_loop() {
     Vehicle vehicle;
     // Check to see if there is a current delay. If not, the next action will

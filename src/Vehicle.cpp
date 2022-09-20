@@ -1,8 +1,9 @@
 //
-// Created by tompnyx on 20/07/2022.
+// Created by Tompnyx on 20/07/2022.
 //
 #include "Arduino.h"
 #include "Vehicle.h"
+
 Vehicle::Vehicle() {
     accelerating = false;
     breaking = false;
