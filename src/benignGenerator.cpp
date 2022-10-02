@@ -34,8 +34,9 @@ Operation op = performRoute;
 // The filename of the json file containing the trip information
 const char *filename = "trip.txt";
 // Make sure to set the correct memory pool in bytes.
-// https://arduinojson.org/v6/assistant is a useful tool for this.
-// Please look at the documentation for further information:
+// https://arduinojson.org/v6/assistant is a useful tool for this. The input
+// type is a stream, and the mode is Deserialize. Please look at the
+// documentation for further information:
 // https://arduinojson.org/v6/doc/deserialization/
 const int capacity = 192;
 // The json file that holds the array of actions
