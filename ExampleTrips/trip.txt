@@ -1,15 +1,5 @@
-{
-  "trip": [
-    {
-      "action": "accelerate",
-      "delay": 50,
-      "target": 60
-    },
-    {
-      "action": "break",
-      "delay": 0,
-      "target": 0
-    }
-  ],
-  "actionAmount": 2
-}
+# Number of actions
+2
+# List of actions in [Action]/[Delay between next action]/[Target Value for the action]
+accelerate/50/60
+break/0/0

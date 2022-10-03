@@ -8,10 +8,10 @@
 #include "benignGenerator_dfs.h"
 
 /**
- * Initialises the JSON object needed to deserialize the JSON file. This is
- * performed if the performRoute mode is selected.
+ * Initialises the file variable needed to read the file present on the SD
+ * card. This is performed if the performRoute mode is selected.
  */
-void initialiseJsonObject();
+void initialiseFile();
 
 /**
  * Generates a random CAN ID.

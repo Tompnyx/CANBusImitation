@@ -5,7 +5,6 @@
 #include "Vehicle.h"
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
 #include <mcp2515_can.h>
 #include <SD.h>
 
@@ -22,6 +21,12 @@
 // The SD SPI CS PIN of the Arduino (If your Arduino or CAN-BUS shield has SD
 // card capabilities
 #define SD_SPI_CS_PIN 4
+// Definitions for the action values stored in the actions array
+#define ACCELERATE 1
+#define BREAK 2
+#define TURN 3
+// Size of the largest character action command
+#define MAX_ACTION_SIZE 11
 
 // PUBLIC VARIABLES ===========================================================
 // Sets CS pin (as defined above)
@@ -32,21 +37,27 @@ enum Operation { sendRandom, receiveOnly, sendRandomAndReceive, performRoute};
 Operation op = performRoute;
 
 // The filename of the json file containing the trip information
-const char *filename = "trip.txt";
-// Make sure to set the correct memory pool in bytes.
-// https://arduinojson.org/v6/assistant is a useful tool for this. The input
-// type is a stream, and the mode is Deserialize. Please look at the
-// documentation for further information:
-// https://arduinojson.org/v6/doc/deserialization/
-const int capacity = 192;
-// The json file that holds the array of actions
-JsonArray trip;
+const char *filename = "ltrip.txt";
+// The file that the SD card is read to
+File sdFile;
+// Delimiter that separates the different values in the file present on the
+// SD card
+const char delimiter = '/';
+// The comment indicator for the SD card, so that any lines starting with this
+// character will be ignored
+const char commentIndicator = '#';
 // The total amount of actions needed to
-unsigned short actionAmount;
+unsigned short actionTotal;
 // The current action
 unsigned short actionCounter = 0;
 // The amount of iterations before the next action is performed
-int actionDelay;
+signed short actionDelay = 0;
+// Array of actions read from sdFile
+unsigned short *actions;
+// Array of targets read from sdFile
+unsigned short *targets;
+// Array of delays read from sdFile
+int *delays;
 
 // The time the device started
 unsigned long timeStart;
@@ -54,6 +65,8 @@ unsigned long timeStart;
 unsigned long filterId = 0;
 // How many loops in a second. The target is a 'loop' every 0.0002 seconds.
 short lis = 5000;
+// The vehicle object used by the performRoute option
+Vehicle vehicle;
 
 // ARDUINO FUNCTIONS ==========================================================
 
@@ -66,7 +79,7 @@ void setup() {
     if (CAN_OK != CAN.begin(CAN_500KBPS)) {
         SERIAL_PORT_MONITOR.println("CAN init fail");
         SERIAL_PORT_MONITOR.flush();
-        return;
+        exit(0);
     }
     SERIAL_PORT_MONITOR.println("CAN init ok!");
     // Records the time the device started looping
@@ -76,7 +89,7 @@ void setup() {
 
     // Initialises the performRoute option if selected
     if (op == performRoute) {
-        initialiseJsonObject();
+        initialiseFile();
     }
 }
 
@@ -107,44 +120,92 @@ void loop() {
 
 // SETUP JSON OBJECT ==========================================================
 
-void initialiseJsonObject() {
+void initialiseFile() {
     // init the sd card
     if (!SD.begin(SD_SPI_CS_PIN)) {
         SERIAL_PORT_MONITOR.println("SD init fail");
         SERIAL_PORT_MONITOR.flush();
-        return;
+        exit(0);
     }
     SERIAL_PORT_MONITOR.println("SD init ok!");
 
     // Read the json file if needed
-    File myFile = SD.open(filename, FILE_READ);
+    sdFile = SD.open(filename, FILE_READ);
     // Test that the file is available
-    if (!myFile) {
+    if (!sdFile) {
         SERIAL_PORT_MONITOR.println("File failed to open");
         SERIAL_PORT_MONITOR.flush();
-        return;
+        sdFile.close();
+        exit(0);
     }
     SERIAL_PORT_MONITOR.println("File opened successfully");
 
-    // Create the json object
-    StaticJsonDocument<capacity> doc;
-    // Deserialize the json file
-    DeserializationError jsonError = deserializeJson(doc, myFile);
+    while (sdFile.available()) {
+        // Skip over comment lines until an input line is read
+        if (sdFile.peek() == commentIndicator) {
+            while (sdFile.available()) {
+                if (sdFile.read() == '\n') break;
+            }
+            continue;
+        }
 
-    // Test if the parsing succeeded
-    if (jsonError) {
-        SERIAL_PORT_MONITOR.print("deserializeJson() failed: ");
-        SERIAL_PORT_MONITOR.println(jsonError.f_str());
-        SERIAL_PORT_MONITOR.flush();
-        return;
+        // Read the actionTotal
+        char buffer[MAX_ACTION_SIZE] = {0};
+        sdFile.readBytesUntil('\n', buffer, MAX_ACTION_SIZE);
+        actionTotal = (unsigned short) strtol(buffer, nullptr, 10);
+        break;
     }
 
-    // Read the needed information from the Json Object
-    trip = doc["trip"];
-    actionAmount = doc["actionAmount"].as<int>();
+    // Assign memory to arrays used to keep the relevant information
+    unsigned short counter = 0;
+    actions = (unsigned short *) malloc(sizeof(unsigned short) * actionTotal);
+    delays = (int *) malloc(sizeof(int) * actionTotal);
+    targets = (unsigned short *) malloc(sizeof(unsigned short) * actionTotal);
+
+    while (sdFile.available()) {
+        // Skip over comment lines until an input line is read
+        if (sdFile.peek() == commentIndicator) {
+            while (sdFile.available()) {
+                if (sdFile.read() == '\n') break;
+            }
+            continue;
+        }
+
+        // Parse the read line into the needed information kept in the relevant
+        // arrays
+        char buffer[MAX_ACTION_SIZE] = {0};
+
+        // Read the action input
+        sdFile.readBytesUntil(delimiter, buffer, MAX_ACTION_SIZE);
+        if (strcmp(buffer, "accelerate") == 0) {
+            actions[counter] = ACCELERATE;
+        } else if (strcmp(buffer, "break") == 0) {
+            actions[counter] = BREAK;
+        } else if (strcmp(buffer, "turn") == 0) {
+            actions[counter] = TURN;
+        }
+        memset(buffer, 0, sizeof(buffer));
+
+        // Read the delay input
+        sdFile.readBytesUntil(delimiter, buffer, MAX_ACTION_SIZE);
+        delays[counter] = (int) strtol(buffer, nullptr, 10);
+
+        // Read the target input
+        sdFile.readBytesUntil('\n', buffer, MAX_ACTION_SIZE);
+        // Convert the short to unsigned short
+        auto signedShort = (short) strtol(buffer, nullptr, 10);
+        // As strtol converts the number to a signed value, this is converted
+        // back by adding it to the maximum possible value for an unsigned
+        // short
+        targets[counter] = (unsigned short) (signedShort < 0) ?
+                           (65536 + signedShort) : signedShort;
+
+        // Iterate counter
+        counter++;
+    }
 
     // Close the file
-    myFile.close();
+    sdFile.close();
 
     // Flush the Serial port to ensure all 'printed' messages have been sent
     SERIAL_PORT_MONITOR.flush();
@@ -513,33 +574,45 @@ void PCM_IC(unsigned short engineTemp, bool odometerIncrement,
 // accelerating or breaking the vehicle
 
 void overview_vehicle_functionality_loop() {
-    Vehicle vehicle;
     // Check to see if there is a current delay. If not, the next action will
     // be read and performed.
-
-    if (actionDelay == 0) {
-        if (actionCounter >= actionAmount) {
-            // Trip is done
-            exit(0);
-        } else {
-            if (strncmp(trip[actionCounter]["action"], "accelerate",
-                        10) == 0) {
-                vehicle.startAccelerating(trip[actionCounter]["target"]);
-            } else if (strncmp(trip[actionCounter]["action"], "turn",
-                               4) == 0) {
-                vehicle.startTurning(trip[actionCounter]["target"]);
-            } else if (strncmp(trip[actionCounter]["action"], "break",
-                               5) == 0) {
-                vehicle.startBreaking();
+    if (actionDelay <= 0) {
+        if (actionCounter >= actionTotal) {
+            if (vehicle.vehicleTargetsMet()) {
+                // Trip is done
+                SERIAL_PORT_MONITOR.flush();
+                // Free the relevant arrays
+                free(actions);
+                free(targets);
+                free(delays);
+                // Exit
+                exit(0);
+            } else {
+                // Function continues onwards until targets are met
             }
-            // Set delay and increase action counter
-            actionDelay = trip[actionCounter]["delay"];
+        } else {
+            // Act on the read information relevant to the actionCounter
+            // position
+            if (actions[actionCounter] == ACCELERATE) {
+                vehicle.startAccelerating(targets[actionCounter]);
+            } else if (actions[actionCounter] == BREAK) {
+                vehicle.startBreaking();
+            } else if (actions[actionCounter] == TURN) {
+                vehicle.startTurning(targets[actionCounter]);
+            }
+
+            // Set the delay
+            actionDelay = delays[actionCounter];
+            // Increase action counter
             actionCounter++;
         }
     }
 
     // Check Current Action Completion
     vehicle.checkTargets(lis);
+
+    // Debug the simulated vehicle
+    // vehicle.debug();
 
     // Send the needed messages
     bool odoHasIncreased = vehicle.updateOdometer(lis);
@@ -553,6 +626,9 @@ void overview_vehicle_functionality_loop() {
     PCM_IC(vehicle.engineTemp, odoHasIncreased,vehicle.oilPressureOK,
            vehicle.engineLightOn,vehicle.engineLightBlinking,
            vehicle.lowCoolant,vehicle.batteryCharge);
+
+    // Reduce action counter by 1
+    actionDelay--;
 }
 
 // END FILE ===================================================================

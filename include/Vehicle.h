@@ -51,8 +51,8 @@ public:
 
     // The current speed of the vehicle
     unsigned short currentSpeed;
-    // The angle of the vehicle between 64993 and 542 (left to right). It is 0
-    // if centered.
+    // The angle of the vehicle has to be between 64993 and 542 (left to
+    // right). It is 0 if centered.
     unsigned short currentSteeringAngle;
 
     // The accelerating throttle value (between 0 and 200)
@@ -64,11 +64,6 @@ public:
      * @return The RPM of the vehicle
      */
     double calculateRPM() const;
-
-    /**
-     * @return The current speed of the vehicle in kilometers per hour
-     */
-    unsigned short currentSpeedInKilometerPerHour() const;
 
     /**
      * Check if the acceleration target has been met.
@@ -97,6 +92,17 @@ public:
     void checkTargets(short lis);
 
     /**
+     * @return The current speed of the vehicle in kilometers per hour
+     */
+    unsigned short currentSpeedInKilometerPerHour() const;
+
+    /**
+     * Used to output to SERIAL_PORT_MONITOR useful information about the
+     * state of the simulated vehicle
+     */
+    void debug() const;
+
+    /**
      * Used to accelerate the vehicle.
      *
      * @param targetSpeed The target speed to accelerate up to
@@ -122,6 +128,13 @@ public:
      * @return If the odometer needed to be incremented or not
      */
     bool updateOdometer(short lis);
+
+    /**
+     * Used to check if all the targets for the vehicle have been met.
+     *
+     * @return If all the vehicle's targets have been met
+     */
+    bool vehicleTargetsMet() const;
 
 private:
     // The target speed of the vehicle

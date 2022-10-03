@@ -21,7 +21,6 @@ The code in this project was developed to run on the [Arduino Uno Rev3](https://
 
 The libraries used in this project include:
 
-- [ArduinoJson](https://arduinojson.org/) Version 6.19.4
 - [SD](https://www.arduino.cc/reference/en/libraries/sd/) Version 1.2.4
 - [Seeed Arduino CAN](https://github.com/Seeed-Studio/Seeed_Arduino_CAN) Version 2.3.3
 
@@ -39,7 +38,18 @@ To perform the different functionality of the program, four different operationa
 - **sendRandomAndReceive** is the combination of both **sendRandom** and **receiveOnly**
 - **performRoute** generates CAN messages in accordance to a predetermined trip
 
-Note that the **performRoute** mode requires: SD card capabilities, a SD card, and a JSON file containing the trip information on that SD card. The filename of the json file needs to replace the value of the variable **filename**. You will also need to calculate the memory pool (in bytes) needed to deserialize the json file. [ArduinoJsonAssistant](https://arduinojson.org/v6/assistant) is a useful tool for this. For further information, please refer to the [documentation](https://arduinojson.org/v6/doc/deserialization/) for deserialization. An example trip called **trip.txt** can be found in the folder **ExampleTrips**. Also, please note that certain Arduino boards might not work with file extensions with more than three characters.
+Note that the **performRoute** mode requires: SD card capabilities, a SD card, and a text file containing the trip information on that SD card. The filename of the text file needs to replace the value of the variable **filename**. The format of these files are as follows:
+
+```
+# This is a comment, denoted by the 'hash' symbol
+[Number of actions performed]
+[Action]/[Delay Length]/[Target Value]
+[Action]/[Delay Length]/[Target Value]
+[Action]/[Delay Length]/[Target Value]
+```
+Note that the delimiter is set to '/' by default but can be changed by setting the **delimiter** variable. This is also true with comments and the **commentIndicator** variable.
+
+Two example trips called **trip.txt** and **ltrip.txt** can be found in the folder **ExampleTrips**. Also, please note that certain Arduino boards might not work with file extensions with more than three characters.
 
 An optional filter ID can also be set when receiving an Arbitration/ CAN ID.
 

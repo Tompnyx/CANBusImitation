@@ -1,115 +1,25 @@
-{
-  "trip": [
-    {
-      "action": "accelerate",
-      "delay": 50,
-      "target": 60
-    },
-    {
-      "action": "break",
-      "delay": 100,
-      "target": 0
-    },
-    {
-      "action": "accelerate",
-      "delay": 50,
-      "target": 60
-    },
-    {
-      "action": "turn",
-      "delay": 30,
-      "target": 54853
-    },
-    {
-      "action": "turn",
-      "delay": 10,
-      "target": 0
-    },
-    {
-      "action": "accelerate",
-      "delay": 700,
-      "target": 80
-    },
-    {
-      "action": "break",
-      "delay": 300,
-      "target": 60
-    },
-    {
-      "action": "break",
-      "delay": 10,
-      "target": 20
-    },
-    {
-      "action": "turn",
-      "delay": 35,
-      "target": 15059
-    },
-    {
-      "action": "turn",
-      "delay": 10,
-      "target": 0
-    },
-    {
-      "action": "accelerate",
-      "delay": 300,
-      "target": 70
-    },
-    {
-      "action": "break",
-      "delay": 150,
-      "target": 0
-    },
-    {
-      "action": "accelerate",
-      "delay": 800,
-      "target": 70
-    },
-    {
-      "action": "break",
-      "delay": 10,
-      "target": 15
-    },
-    {
-      "action": "turn",
-      "delay": 35,
-      "target": 48413
-    },
-    {
-      "action": "turn",
-      "delay": 10,
-      "target": 0
-    },
-    {
-      "action": "accelerate",
-      "delay": 100,
-      "target": 50
-    },
-    {
-      "action": "turn",
-      "delay": 10,
-      "target": 30254
-    },
-    {
-      "action": "break",
-      "delay": 50,
-      "target": 10
-    },
-    {
-      "action": "break",
-      "delay": 30,
-      "target": 2
-    },
-    {
-      "action": "turn",
-      "delay": 10,
-      "target": 0
-    },
-    {
-      "action": "break",
-      "delay": 0,
-      "target": 0
-    }
-  ],
-  "actionAmount": 22
-}
+# Number of actions
+22
+# List of actions in [Action]/[Delay between next action]/[Target Value for the action]
+accelerate/50/60
+break/100/0
+accelerate/50/60
+turn/30/54853
+turn/10/0
+accelerate/700/80
+break/300/60
+break/10/20
+turn/35/15059
+turn/10/0
+accelerate/300/70
+break/150/0
+accelerate/800/70
+break/10/15
+turn/35/48413
+turn/10/0
+accelerate/100/50
+turn/10/30254
+break/50/10
+break/30/2
+turn/10/0
+break/0/0
